@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 # ====== CONFIG ======
-st.set_page_config(page_title="p", layout="wide")
+st.set_page_config(page_title="AI analysis TTG", layout="wide")
 LOCAL_TZ = tz.gettz("Asia/Ho_Chi_Minh")
 
 # ====== UTILS ======
@@ -226,7 +226,7 @@ def try_cluster(df_user_prompts, n_clusters=6):
         return None
 
 # ====== UI ======
-st.title("📊 ChatGPT Usage Analyzer")
+st.title("📊 ChatGPT Usage Analyzer for TTG ")
 
 st.sidebar.subheader("Tải dữ liệu")
 uploaded_files = st.sidebar.file_uploader(
@@ -374,7 +374,7 @@ if uploaded_files:
         with tab4:
             st.dataframe(month_df.sort_values("create_time"))
 
-        # ====== EXPORTS ======
+        """# ====== EXPORTS ======
         st.header("Xuất báo cáo")
         # Excel
         buffer = io.BytesIO()
@@ -414,4 +414,4 @@ if uploaded_files:
     else:
         st.info("Chưa có dữ liệu hợp lệ.")
 else:
-    st.info("Hãy tải lên một hoặc nhiều file conversations.json để bắt đầu.")
+    st.info("Hãy tải lên một hoặc nhiều file conversations.json để bắt đầu.")"""
