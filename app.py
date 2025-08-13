@@ -166,7 +166,7 @@ def score_prompt_quality(text: str):
         score += 25  # very long can be noisy, but still ok
 
     # context signals
-    keywords_context = ["bối cảnh", "context", "dữ liệu", "input", "tham số", "giả định", "assume", "role:"]
+    keywords_context = ["bối cảnh", "context", "dữ liệu", "input", "tham số", "giả định", "assume", "role:", "giả sử","bạn là"]
     if any(k.lower() in t.lower() for k in keywords_context):
         score += 15
 
@@ -176,7 +176,7 @@ def score_prompt_quality(text: str):
         score += 15
 
     # clear ask verbs
-    verbs = ["viết", "tóm tắt", "dịch", "giải thích", "liệt kê", "so sánh", "phân tích", "đưa ra", "tạo", "generate", "summarize", "translate", "explain"]
+    verbs = ["viết", "tóm tắt", "dịch", "giải thích", "liệt kê", "so sánh", "phân tích", "đưa ra", "tạo", "generate", "summarize", "translate", "explain", "viết code"]
     if any(v.lower() in t.lower() for v in verbs):
         score += 15
 
@@ -185,7 +185,7 @@ def score_prompt_quality(text: str):
         score += 10
 
     # domain terms hint (often better prompts)
-    domain_hints = ["hợp đồng", "báo cáo", "biên bản", "đấu thầu", "ngân sách", "marketing", "CRM", "quy trình", "SOP"]
+    domain_hints = ["hợp đồng", "báo cáo","phân tích","mã code", "fix code", "biên bản", "đấu thầu", "ngân sách", "marketing", "CRM", "quy trình", "SOP"]
     if any(d.lower() in t.lower() for d in domain_hints):
         score += 10
 
@@ -193,13 +193,21 @@ def score_prompt_quality(text: str):
 
 # ====== TOPIC TAGGING (EDITABLE RULES) ======
 DEFAULT_TOPIC_RULES = {
-    "Kinh doanh": ["doanh thu", "doanh số", "P&L", "chốt deal", "CRM", "báo cáo kinh doanh"],
-    "Marketing": ["quảng cáo", "chiến dịch", "meta ads", "google ads", "seo", "content", "thương hiệu", "branding"],
-    "Tuyển dụng/HR": ["jd", "tuyển", "phỏng vấn", "chế độ", "lương", "onboarding", "OKR", "đánh giá"],
-    "Pháp lý": ["hợp đồng", "phụ lục", "điều khoản", "pháp lý", "luật", "tuân thủ", "compliance"],
-    "Tài chính/Kế toán": ["hóa đơn", "ngân sách", "bút toán", "báo cáo tài chính", "thuế", "vat"],
-    "Vận hành": ["quy trình", "SOP", "quy định", "quản trị", "biểu mẫu"],
-    "Kỹ thuật/IT": ["api", "database", "script", "server", "deploy", "bug", "log", "python", "sql"],
+    "Kinh doanh": ["doanh thu", "doanh số", "P&L", "chốt deal", "CRM", "báo cáo kinh doanh"," nhà cung cấp"],
+    "Nội dung/Kế hoạch": ["quảng cáo", "chiến dịch", "meta ads", "google ads", "seo", "content", "nội dung", "thương hiệu", "branding", "viết", "văn bản"],
+    "Tuyển dụng/HR": ["jd", "tuyển", "phỏng vấn", "chế độ", "lương", "onboarding", "OKR", "đánh giá", "performance", "kpi", "phúc lợi", "benefits", "hợp đồng lao động", "hợp đồng thử việc", "hợp đồng chính thức", "hợp đồng lao động thời vụ", "hợp đồng cộng tác viên", "hợp đồng khoán việc","ứng viên", "candidate", "recruitment", "hồ sơ ứng viên", "job description", "employee handbook"],
+    "Pháp lý": ["hợp đồng","nhà thầu","chủ đầu tư","gói thầu", "bên a", "bên b" ,"phụ lục", "điều khoản", "pháp lý", "luật", "tuân thủ", "compliance", "kiện","tranh chấp", "thỏa thuận", "agreement", "legal","khoản","điều","nghị định", "nghị quyết", ],
+    "Tài chính/Kế toán": ["hóa đơn", "ngân sách", "bút toán", "báo cáo tài chính", "thuế", "vat","invoice", "budget", "accounting", "financial report", "tax", "kiểm toán", "audit", "financial statement", "balance sheet", "profit and loss", "cash flow"],
+    "Vận hành": ["quy trình", "SOP", "quy định", "quản trị", "biểu mẫu", "quản lý xây dựng"],
+    "Học thuật": ["học thuật","so sánh" ,"check lại","nghiên cứu","bài báo", "tài liệu học thuật", "academic", "research", "paper","xử lý", "thế nào","lesson plan", "công thức", "cách tính"],
+    "Tra cứu": ["trích","tra cứu","viết tắt","bao nhiêu","vậy còn","làm sao để " ,"là gì", "là sao", "tại sao" ,"đọc file","tìm kiếm", "lookup", "thông tin", "data", "cơ sở dữ liệu", "database", "tài liệu", "hướng dẫn", "là gì?"],
+    "Dịch thuật": ["dịch","dich", "dich sang","chuyển ngữ", "Chuyển sang song ngữ Anh - Việt", "translate", "phiên dịch", "bản dịch", "ngôn ngữ", "tiếng anh", "tiếng việt"],
+    "CSKH": ["hỗ trợ", "khách hàng", "phản hồi", "ticket", "trợ giúp", "giải đáp"],
+    "Xây dựng": ["thi công", "công trình", "dự án", "xây dựng", "kiến trúc","bê tông", "kỹ sư", "giám sát", "thiết kế kiến trúc", "construction", "project management", "architectural design", "engineering"],
+    "Báo cáo": ["báo cáo", "report", "thống kê", "phân tích", "dashboard", "biểu đồ", "chart", "data analysis"],
+    "Hỗ trợ Thiết kế": ["thiết kế", "đồ họa", "sketchup", "autocad", "bản vẽ", "mockup", "prototype", "edit", "viền mỏng", "viền dày", "màu sắc", "font chữ", "logo", "branding", "design", "graphic design", "sketchup", "autocad", "photoshop", "illustrator","mm", "cm", "inch", "pixel", "dpi", "resolution", "vector", "raster", "layout", "composition", "typography"],
+    "Email": ["email", "thư điện tử", "gửi mail", "trả lời email", "hộp thư", "outlook", "gmail"],
+    "Kỹ thuật/Phần mềm/IT": ["api","sơ đồ","giả lập","giao diện","học sâu","học máy","chức năng","window","file","code", "router","nguồn","excel", "word", "pdf", "sharepoint", "database", "script", "server", "deploy", "bug", "log", "python", "sql","in ấn", "sửa lỗi", "sửa chữa", "bảo trì", "cài đặt", "hệ thống", "mạng", "network","AI HUb", "chatgpt", "openai", "gpt-3.5", "gpt-4", "llm", "machine learning", "deep learning", "trí tuệ nhân tạo", "artificial intelligence", "chatbot", "model", "training", "fine-tuning", "prompt engineering", "android", "ios", "app development", "web development", "frontend", "backend", "fullstack", "javascript", "react", "vue", "angular", "nodejs", "express", "django", "flask", "ruby on rails", "kích thước", "file excel"],
 }
 
 def tag_topic(text, rules):
@@ -210,7 +218,7 @@ def tag_topic(text, rules):
     return "Khác"
 
 # ====== OPTIONAL: CLUSTERING (if sklearn available) ======
-def try_cluster(df_user_prompts, n_clusters=6):
+def try_cluster(df_user_prompts, n_clusters=15):
     try:
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.cluster import KMeans
@@ -374,7 +382,7 @@ if uploaded_files:
         with tab4:
             st.dataframe(month_df.sort_values("create_time"))
 
-        """# ====== EXPORTS ======
+        # ====== EXPORTS ======
         st.header("Xuất báo cáo")
         # Excel
         buffer = io.BytesIO()
@@ -414,4 +422,4 @@ if uploaded_files:
     else:
         st.info("Chưa có dữ liệu hợp lệ.")
 else:
-    st.info("Hãy tải lên một hoặc nhiều file conversations.json để bắt đầu.")"""
+    st.info("Hãy tải lên một hoặc nhiều file conversations.json để bắt đầu.")
