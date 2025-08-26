@@ -205,68 +205,117 @@ DEFAULT_TOPIC_RULES = {
     "CSKH": ["hỗ trợ", "khách hàng", "phản hồi", "ticket", "trợ giúp", "giải đáp"],
     "Xây dựng": ["thi công", "công trình", "dự án", "xây dựng", "kiến trúc","bê tông", "kỹ sư", "giám sát", "thiết kế kiến trúc", "construction", "project management", "architectural design", "engineering"],
     "Báo cáo": ["báo cáo", "report", "thống kê", "phân tích", "dashboard", "biểu đồ", "chart", "data analysis"],
-    "Hỗ trợ Thiết kế": ["thiết kế", "đồ họa", "sketchup", "autocad", "bản vẽ","mockup", "prototype", "edit", "viền mỏng", "viền dày", "màu sắc", "font chữ", "logo", "branding", "design", "graphic design", "sketchup", "autocad", "photoshop", "illustrator","mm", "cm", "inch", "pixel", "dpi", "resolution", "vector", "raster", "layout", "composition", "typography"],
+    "Hỗ trợ Thiết kế": ["thiết kế", "đồ họa", "sketchup", "autocad", "bản vẽ", "mockup", "prototype", "edit", "viền mỏng", "viền dày", "màu sắc", "font chữ", "logo", "branding", "design", "graphic design", "sketchup", "autocad", "photoshop", "illustrator","mm", "cm", "inch", "pixel", "dpi", "resolution", "vector", "raster", "layout", "composition", "typography"],
     "Email": ["email", "thư điện tử", "gửi mail", "trả lời email", "hộp thư", "outlook", "gmail"],
-    "QLHC" : ["mua", "chỗ mua", "tìm mua", "ncc", "thiết bị", "vật tư", "văn phòng phẩm", "đặt mua", "đặt hàng", "nhà cung cấp", "vendor", "procurement", "supply", "supply chain", "NCC"],
     "Kỹ thuật/Phần mềm/IT": ["api","sơ đồ","giả lập","giao diện","học sâu","học máy","chức năng","window","file","code", "router","nguồn","excel", "word", "pdf", "sharepoint", "database", "script", "server", "deploy", "bug", "log", "python", "sql","in ấn", "sửa lỗi", "sửa chữa", "bảo trì", "cài đặt", "hệ thống", "mạng", "network","AI HUb", "chatgpt", "openai", "gpt-3.5", "gpt-4", "llm", "machine learning", "deep learning", "trí tuệ nhân tạo", "artificial intelligence", "chatbot", "model", "training", "fine-tuning", "prompt engineering", "android", "ios", "app development", "web development", "frontend", "backend", "fullstack", "javascript", "react", "vue", "angular", "nodejs", "express", "django", "flask", "ruby on rails", "kích thước", "file excel"],
 }
 
 def tag_topic(text, rules):
     t = text.lower()
+    # Choose the topic with the highest number of matching keywords.  This helps
+    # reduce the number of prompts falling into the "Khác" category by selecting
+    # the most relevant rule set instead of returning the first match.
+    best_topic = None
+    best_count = 0
     for topic, kws in rules.items():
-        if any(kw.lower() in t for kw in kws):
-            return topic
-    return "Khác"
+        # Count how many keywords from this topic appear in the text
+        count = sum(1 for kw in kws if kw.lower() in t)
+        if count > best_count:
+            best_count = count
+            best_topic = topic
+    return best_topic if best_count > 0 else "Khác"
 
-# ====== PURPOSE TAGGING (additional heuristics for report template) ======
-# The template requires a breakdown of "Mục đích sử dụng" (purpose of use) such as
-# Tra cứu, tóm tắt, viết mail, học tập,…  Because the raw data does not
-# explicitly encode purpose, we define a simple heuristic mapping from
-# keywords to broad purpose categories.  You can extend or adjust this
-# dictionary to better fit your data.  Each entry maps a purpose name to a
-# list of keywords; if any keyword appears in the prompt text, that purpose
-# will be assigned.  If no keywords match, the prompt is tagged as "Khác".
-PURPOSE_RULES = {
+# ====== PURPOSE TAGGING (EDITABLE RULES) ======
+# Similar to topic tagging, we maintain a separate dictionary of rules for
+# identifying the purpose of a prompt.  These are high‑level categories
+# reflecting how staff typically use ChatGPT, such as looking up information
+# (Tra cứu), drafting emails (Viết mail), summarising documents (Tóm tắt),
+# learning (Học tập), translation (Dịch thuật) and so on.  The aim is to
+# minimise the number of prompts falling into the "Khác" category by
+# providing comprehensive keyword lists.  Users can override these rules
+# via the sidebar.
+DEFAULT_PURPOSE_RULES = {
     "Tra cứu": [
-        "tra cứu", "tra cuu", "lookup", "search", "tìm", "tìm kiếm", "là gì", "bao nhiêu", "tại sao", "how", "what",
+        "tra cứu", "lookup", "tìm kiếm", "trích", "bao nhiêu", "là gì", "là sao", "tại sao", "hướng dẫn", "thông tin", "data", "cơ sở dữ liệu"
     ],
     "Tóm tắt": [
-        "tóm tắt", "tóm tat", "summary", "summarize", "tổng kết", "phân tách", "đúc kết", "tóm lược",
+        "tóm tắt", "summary", "tóm lược", "condense", "viết ngắn", "paraphrase", "rút gọn", "gist"
     ],
     "Viết mail": [
-        "email", "mail", "thư", "gửi mail", "viết mail", "trả lời email", "reply email", "forward",
+        "email", "mail", "thư điện tử", "soạn mail", "gửi mail", "trả lời mail", "viết email", "thư", "outlook", "gmail"
     ],
     "Học tập": [
-        "học", "học tập", "learn", "study", "bài học", "lesson", "giảng", "nghiên cứu",
+        "học", "bài học", "lesson", "nghiên cứu", "đọc", "học thuật", "tài liệu", "ngôn ngữ", "tiếng anh", "tiếng việt", "học tập", "tự học"
     ],
     "Dịch thuật": [
-        "dịch", "dich", "translate", "dịch sang", "chuyển ngữ", "phiên dịch",
-    ],
-    "Viết code": [
-        "code", "python", "java", "c++", "javascript", "program", "script", "sql", "lập trình",
+        "dịch", "chuyển ngữ", "dịch sang", "translate", "phiên dịch", "song ngữ", "dịch thuật"
     ],
     "Báo cáo": [
-        "báo cáo", "report", "thống kê", "dashboard", "biểu đồ", "chart",
+        "báo cáo", "report", "thống kê", "dashboard", "phân tích", "biểu đồ", "data analysis"
     ],
-    "Kế hoạch": [
-        "kế hoạch", "plan", "planning", "project", "dự án", "chiến dịch",
+    "Lập kế hoạch": [
+        "kế hoạch", "plan", "lịch trình", "timeline", "sắp xếp", "planning", "schedule"
     ],
+    "Tư vấn": [
+        "nên làm", "nên chọn", "tư vấn", "gợi ý", "recommend", "advice", "giải pháp", "hướng dẫn"
+    ],
+    "Soạn thảo văn bản": [
+        "soạn thảo", "viết", "văn bản", "document", "draft", "report", "memo", "lời thoại"
+    ],
+    "Khác": []
 }
 
-def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
+def tag_purpose(text: str, rules: dict) -> str:
+    """Assign a purpose category to a prompt based on keyword rules.
+
+    Returns the category with the highest number of matching keywords or
+    "Khác" if none match.
     """
-    Assign a high‑level purpose category to a user prompt based on keyword
-    matching.  Returns the first matching purpose name, or "Khác" if none
-    match.  This is a simple heuristic and can be tuned by editing
-    PURPOSE_RULES above.
-    """
-    if not text:
-        return "Khác"
-    t_lower = str(text).lower()
+    t = text.lower() if isinstance(text, str) else ""
+    best_purpose = None
+    best_count = 0
     for purpose, kws in rules.items():
-        if any(kw.lower() in t_lower for kw in kws):
-            return purpose
-    return "Khác"
+        if not kws:
+            continue
+        count = sum(1 for kw in kws if kw.lower() in t)
+        if count > best_count:
+            best_count = count
+            best_purpose = purpose
+    return best_purpose if best_count > 0 else "Khác"
+
+
+# ====== KPI RATING ======
+def evaluate_kpi(prompts: int, active_days: int) -> tuple[str, int]:
+    """Return a qualitative rating and KPI percentage based on usage.
+
+    The rules below approximate the organisation's guidelines for
+    assessing AI usage.  They classify usage as:
+      • Xuất sắc (100%): frequent daily use with diverse content
+      • Tốt (80%): regular use with several substantial contributions
+      • Khá (50%): some interaction but not yet frequent or focused
+      • Thấp (0%): little interaction or low application in work
+
+    Parameters
+    ----------
+    prompts : int
+        Number of user prompts in the period.
+    active_days : int
+        Number of distinct days on which ChatGPT was used.
+
+    Returns
+    -------
+    tuple[str, int]
+        A pair of (rating_name, kpi_score_percent).
+    """
+    # These heuristics can be tuned based on actual KPI guidelines
+    if prompts >= 20 or active_days >= 15:
+        return "Xuất sắc", 100
+    elif prompts >= 10 or active_days >= 7:
+        return "Tốt", 80
+    elif prompts >= 5 or active_days >= 3:
+        return "Khá", 50
+    else:
+        return "Thấp", 0
 
 # ====== OPTIONAL: CLUSTERING (if sklearn available) ======
 def try_cluster(df_user_prompts, n_clusters=15):
@@ -321,20 +370,29 @@ except Exception:
     st.sidebar.error("Rules JSON không hợp lệ. Dùng mặc định.")
     topic_rules = DEFAULT_TOPIC_RULES
 
+    # update
+
+    # Purpose rules editable
+st.sidebar.markdown("**Rules phân loại mục đích (có thể chỉnh):**")
+purpose_rules_text = st.sidebar.text_area(
+    "Dạng JSON (purpose -> list từ khóa)",
+    value=json.dumps(DEFAULT_PURPOSE_RULES, ensure_ascii=False, indent=2),
+    height=220
+)
+try:
+    purpose_rules = json.loads(purpose_rules_text)
+except Exception:
+    st.sidebar.error("Rules JSON không hợp lệ. Dùng mặc định cho mục đích.")
+    purpose_rules = DEFAULT_PURPOSE_RULES
+
 # ====== PARSE & COMBINE ======
 if uploaded_files:
     frames = []
     for f in uploaded_files:
         try:
             content = json.load(f)
-            # Derive a base name from the filename (without extension).  This name
-            # will be used as both the account label and the default department
-            # name.  Administrators can rename the JSON file to reflect the
-            # actual department before uploading.
-            base_name = f.name.rsplit(".", 1)[0]
-            df = parse_conversation_json(content, account_label=base_name)
-            if not df.empty:
-                df["department"] = base_name
+            account_label = f.name.rsplit(".", 1)[0]  # filename as account label
+            df = parse_conversation_json(content, account_label=account_label)
             frames.append(df)
         except Exception as e:
             st.error(f"Không đọc được {f.name}: {e}")
@@ -344,29 +402,23 @@ if uploaded_files:
         # Filter to selected month
         month_df = filter_month(all_df, int(year), int(month))
 
-        # Load department map if given.  The CSV must contain two columns: account and
-        # department.  If provided, the department values from the CSV will
-        # override the automatically derived department names (taken from the
-        # filename).  Rows without a mapping will retain their original
-        # department value.  If the CSV cannot be read, we log an error and
-        # leave the existing department values untouched.
+        # Load department map if given
         if dept_map_file is not None:
             try:
                 map_df = pd.read_csv(dept_map_file)
-                # Normalize column names to lowercase for matching
+                if not {"account","department"}.issubset(set(map_df.columns.str.lower())):
+                    # try non-lowercase
+                    need = {"account","department"}
+                    if not need.issubset(set(map_df.columns)):
+                        raise ValueError("CSV cần 2 cột: account, department")
+                # normalize cols
                 map_df.columns = [c.lower() for c in map_df.columns]
-                if not {"account", "department"}.issubset(set(map_df.columns)):
-                    raise ValueError("CSV cần 2 cột: account, department")
-                # Rename the department column to avoid clobbering the existing one during merge
-                map_df = map_df.rename(columns={"department": "department_override"})
-                month_df = month_df.merge(map_df[["account", "department_override"]], on="account", how="left")
-                # Use the override department where available; otherwise keep the original
-                month_df["department"] = month_df["department_override"].combine_first(month_df["department"])
-                month_df.drop(columns=["department_override"], inplace=True)
+                month_df = month_df.merge(map_df[["account","department"]], on="account", how="left")
             except Exception as e:
                 st.error(f"Không đọc được map CSV: {e}")
-                # Keep existing department values
-                pass
+                month_df["department"] = None
+        else:
+            month_df["department"] = None
 
         # Basic derived fields
         month_df["is_user"] = month_df["role"].eq("user")
@@ -384,13 +436,14 @@ if uploaded_files:
 
         # Topic tagging, purpose tagging & prompt quality on user prompts
         user_prompts_df = month_df[month_df["is_user"]].copy()
+        # assign topic
         user_prompts_df["topic"] = user_prompts_df["text"].apply(lambda t: tag_topic(t, topic_rules))
-        user_prompts_df["purpose"] = user_prompts_df["text"].apply(lambda t: tag_purpose(t))
+        # assign purpose
+        user_prompts_df["purpose"] = user_prompts_df["text"].apply(lambda t: tag_purpose(t, purpose_rules))
+        # prompt quality score
         user_prompts_df["prompt_quality"] = user_prompts_df["text"].apply(score_prompt_quality)
-        # compute word count for summary metrics
-        user_prompts_df["word_count"] = user_prompts_df["text"].apply(lambda t: len(str(t).split()) if pd.notna(t) else 0)
 
-        # Try clustering
+        # Try clustering for exploratory analysis (optional)
         if use_clustering:
             labels = try_cluster(user_prompts_df)
             if labels is not None:
@@ -423,223 +476,151 @@ if uploaded_files:
         ).reset_index().rename(columns={"department":"Phòng ban"})
         st.dataframe(by_dep)
 
-        st.subheader("Chủ đề (dựa trên rules)")
+        # --- Topic overview by department with interactive selection ---
+        st.subheader("Chủ đề theo rules")
+        # aggregate topic counts per department
         by_topic = user_prompts_df.groupby(["department","topic"], dropna=False).size().reset_index(name="prompts")
-        st.dataframe(by_topic)
+        # Provide a selection box for departments
+        dept_options = ["Tất cả"] + sorted([d for d in by_topic["department"].dropna().unique()])
+        selected_dep = st.selectbox("Chọn phòng ban để xem chủ đề", dept_options, index=0)
+        if selected_dep == "Tất cả":
+            # summarise across all departments
+            agg_topic = by_topic.groupby("topic")[["prompts"]].sum().reset_index()
+            agg_topic["%"] = (agg_topic["prompts"] / agg_topic["prompts"].sum() * 100).round(1)
+            agg_topic = agg_topic.sort_values("prompts", ascending=False)
+            st.dataframe(agg_topic.rename(columns={"prompts":"Số prompts"}))
+        else:
+            df_topic_dep = by_topic[by_topic["department"] == selected_dep]
+            if not df_topic_dep.empty:
+                df_topic_dep = df_topic_dep.sort_values("prompts", ascending=False)
+                df_topic_dep["%"] = (df_topic_dep["prompts"] / df_topic_dep["prompts"].sum() * 100).round(1)
+                st.dataframe(df_topic_dep[["topic","prompts","%"]].rename(columns={"topic":"Chủ đề","prompts":"Số prompts"}))
+            else:
+                st.info(f"Không có dữ liệu chủ đề cho phòng ban '{selected_dep}'")
 
-        st.subheader("Điểm chất lượng prompt")
-        qual = user_prompts_df.groupby("department", dropna=False)["prompt_quality"].agg(["count","mean","median","min","max"]).reset_index()
-        st.dataframe(qual)
+        # --- KPI evaluation section ---
+        st.subheader("Đánh giá chất lượng theo A3 (KPIs)")
+        # compute number of active days per department based on user prompts
+        active_days_by_dep = user_prompts_df.groupby("department", dropna=False)["date"].nunique().reset_index(name="active_days")
+        prompt_counts_by_dep = user_prompts_df.groupby("department", dropna=False).size().reset_index(name="prompts")
+        kpi_df = by_dep.merge(active_days_by_dep, left_on="Phòng ban", right_on="department", how="left")
+        kpi_df = kpi_df.merge(prompt_counts_by_dep, left_on="Phòng ban", right_on="department", how="left", suffixes=("_drop","_drop2"))
+        kpi_df.drop(columns=["department_drop","department_drop2"], inplace=True, errors="ignore")
+        # fill NaNs with zeros
+        kpi_df[["active_days","prompts"]] = kpi_df[["active_days","prompts"]].fillna(0).astype(int)
+        # apply evaluation function
+        ratings = kpi_df.apply(lambda row: evaluate_kpi(row["prompts"], row["active_days"]), axis=1)
+        kpi_df[["Đánh giá","Điểm KPIs %"]] = pd.DataFrame(ratings.tolist(), index=kpi_df.index)
+        # show selected columns
+        st.dataframe(kpi_df[["Phòng ban","conversations","user_prompts","active_days","Đánh giá","Điểm KPIs %"]].rename(columns={
+            "conversations":"Số cuộc hội thoại",
+            "user_prompts":"Số prompts (user)"
+        }))
 
-        # ====== SUMMARY DATA FOR EXCEL REPORT ======
-        # Prepare a per‑department summary with metrics required by the template
-        report_month_str = f"{int(month):02d}-{int(year)}"
-        dept_summary_rows = []
-        all_departments = sorted([d for d in month_df["department"].dropna().unique()])
-        for idx, dep in enumerate(all_departments, start=1):
-            convs = conv_stats[conv_stats["department"] == dep]
-            prompts_dep = user_prompts_df[user_prompts_df["department"] == dep]
-            if convs.empty:
-                continue
-            conv_count = convs["conversation_id"].nunique()
-            avg_msgs = float(convs["total_msgs"].mean()) if not convs.empty else 0
-            active_days = month_df[month_df["department"] == dep]["date"].nunique()
-            avg_prompt_len = float(prompts_dep["word_count"].mean()) if not prompts_dep.empty else 0
-            # Purpose distribution
-            purpose_counts = prompts_dep["purpose"].value_counts()
-            total_p = purpose_counts.sum()
-            purpose_lines = []
-            if total_p > 0:
-                for p_name, count in purpose_counts.items():
-                    pct = count / total_p
-                    purpose_lines.append(f"+ {p_name} ({pct:.0%})")
-            purpose_str = "\n".join(purpose_lines)
-            # Topic distribution
-            topic_counts = prompts_dep["topic"].value_counts()
-            total_t = topic_counts.sum()
-            topic_lines = []
-            if total_t > 0:
-                for t_name, count in topic_counts.items():
-                    pct = count / total_t
-                    topic_lines.append(f"+ {t_name} ({pct:.0%})")
-            topic_str = "\n".join(topic_lines)
-            dept_summary_rows.append({
-                "Tiêu đề": dep,
+        # ====== DETAILS TABS ======
+        tab1, tab2, tab3, tab4 = st.tabs(["Cuộc hội thoại", "Prompts (user)", "Assistant trả lời", "Dữ liệu gốc"])
+
+        with tab1:
+            st.dataframe(conv_stats.sort_values("first_time"))
+
+        with tab2:
+            show_cols = ["account","department","conversation_title","create_time","text","topic","prompt_quality","cluster"]
+            st.dataframe(user_prompts_df[show_cols].sort_values("create_time"))
+
+        with tab3:
+            assistant_df = month_df[month_df["is_assistant"]][["account","department","conversation_title","create_time","text"]]
+            st.dataframe(assistant_df.sort_values("create_time"))
+
+        with tab4:
+            st.dataframe(month_df.sort_values("create_time"))
+
+        # ====== EXPORTS ======
+        st.header("Xuất báo cáo")
+        # Build summary table matching the provided template
+        summary_rows = []
+        # Determine the month string (e.g., "08-2025")
+        month_str = f"{int(month):02d}-{int(year)}"
+        # Generate summary per department (or unknown)
+        departments_list = by_dep["Phòng ban"].tolist()
+        for idx, dep in enumerate(departments_list, start=1):
+            # filter for this department
+            df_dep_prompts = user_prompts_df[user_prompts_df["department"] == dep] if pd.notna(dep) else user_prompts_df[user_prompts_df["department"].isna()]
+            # active days
+            active_days = df_dep_prompts["date"].nunique() if not df_dep_prompts.empty else 0
+            # number of conversations
+            conv_count = int(by_dep.loc[by_dep["Phòng ban"] == dep, "conversations"].values[0])
+            # average messages per conversation
+            avg_msgs = None
+            conv_msgs = conv_stats[conv_stats["department"] == dep] if pd.notna(dep) else conv_stats[conv_stats["department"].isna()]
+            if not conv_msgs.empty:
+                avg_msgs = conv_msgs["total_msgs"].mean()
+                avg_msgs = round(avg_msgs, 1)
+            else:
+                avg_msgs = 0
+            # average prompt length (words)
+            if not df_dep_prompts.empty:
+                word_lengths = df_dep_prompts["text"].apply(lambda x: len(x.split()) if isinstance(x, str) else 0)
+                avg_prompt_len = round(word_lengths.mean(), 1) if not word_lengths.empty else 0
+            else:
+                avg_prompt_len = 0
+            # purpose distribution
+            purpose_counts = df_dep_prompts["purpose"].value_counts()
+            total_purpose = purpose_counts.sum() if not purpose_counts.empty else 0
+            purpose_strs = []
+            if total_purpose > 0:
+                for purpose, count in purpose_counts.items():
+                    percent = round(count / total_purpose * 100)
+                    purpose_strs.append(f"+ {purpose} ({percent}%)")
+            purpose_cell = "\n".join(purpose_strs) if purpose_strs else ""
+            # topic distribution
+            topic_counts = df_dep_prompts["topic"].value_counts()
+            total_topic = topic_counts.sum() if not topic_counts.empty else 0
+            topic_strs = []
+            if total_topic > 0:
+                for topic, count in topic_counts.items():
+                    percent = round(count / total_topic * 100)
+                    topic_strs.append(f"+ {topic} ({percent}%)")
+            topic_cell = "\n".join(topic_strs) if topic_strs else ""
+            # evaluation and KPI
+            prompts_count = len(df_dep_prompts)
+            rating, kpi_score = evaluate_kpi(prompts_count, active_days)
+            summary_rows.append({
                 "#": idx,
-                "Tháng": report_month_str,
+                "Tháng": month_str,
                 "Active Days (số ngày có sử dụng)": active_days,
                 "Số lượng hội thoại": conv_count,
                 "Số lượng tin nhắn trung bình trong mỗi hội thoại": avg_msgs,
                 "Độ dài trung bình câu prompt (từ)": avg_prompt_len,
-                "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %": purpose_str,
-                "Chủ đề (Tuyển dụng, Thuế, ...) kèm %": topic_str,
+                "Mục đích sử dụng kèm %": purpose_cell,
+                "Chủ đề kèm %": topic_cell,
+                "Đánh giá chất lượng theo A3": rating,
+                "Điểm KPIs %": kpi_score
             })
-        dept_summary_df = pd.DataFrame(dept_summary_rows)
+        summary_df = pd.DataFrame(summary_rows)
 
-        # ====== DETAIL VIEWS BY DEPARTMENT ======
-        st.header("Chi tiết theo phòng ban")
-        departments = sorted([d for d in month_df["department"].dropna().unique()])
-        if not departments:
-            st.info("Không có phòng ban nào được tìm thấy trong dữ liệu.")
-        else:
-            selected_dep = st.selectbox("Chọn phòng ban", options=departments, index=0)
-            # Filter dataframes for selected department
-            conv_stats_dep = conv_stats[conv_stats["department"] == selected_dep]
-            user_prompts_dep = user_prompts_df[user_prompts_df["department"] == selected_dep]
-            assistant_dep = month_df[(month_df["department"] == selected_dep) & (month_df["is_assistant"])]
-            raw_dep = month_df[month_df["department"] == selected_dep]
-            # Tabs for detailed views
-            tab_a, tab_b, tab_c, tab_d = st.tabs([
-                "Cuộc hội thoại", "Prompts (user)", "Assistant trả lời", "Dữ liệu gốc"
-            ])
-            with tab_a:
-                st.subheader(f"Danh sách hội thoại của phòng ban {selected_dep}")
-                st.dataframe(
-                    conv_stats_dep.sort_values("first_time").rename(
-                        columns={
-                            "conversation_id": "ID hội thoại",
-                            "conversation_title": "Tiêu đề hội thoại",
-                            "first_time": "Bắt đầu",
-                            "last_time": "Kết thúc",
-                            "user_prompts": "Số prompt",
-                            "assistant_msgs": "Số trả lời",
-                            "total_msgs": "Tổng tin nhắn",
-                            "active_days": "Số ngày hoạt động",
-                        }
-                    )
-                )
-                if not conv_stats_dep.empty:
-                    conv_choices = conv_stats_dep[["conversation_id", "conversation_title"]].apply(
-                        lambda r: f"{r['conversation_id']} – {r['conversation_title']}", axis=1
-                    ).tolist()
-                    selected_conv_label = st.selectbox(
-                        "Chọn hội thoại để xem chi tiết", options=conv_choices
-                    )
-                    selected_conv_id = selected_conv_label.split("–", 1)[0].strip()
-                    if st.button("Xem chi tiết"):
-                        show_in_modal = hasattr(st, "modal")
-                        container_ctx = st.modal if show_in_modal else st.expander
-                        with container_ctx(f"Chi tiết hội thoại: {selected_conv_label}"):
-                            conv_msgs = raw_dep[(raw_dep["conversation_id"].astype(str) == selected_conv_id)].sort_values("create_time")
-                            if conv_msgs.empty:
-                                st.info("Không có dữ liệu cho hội thoại này.")
-                            else:
-                                for _, row in conv_msgs.iterrows():
-                                    ts = row["create_time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["create_time"]) else ""
-                                    if row["role"] == "user":
-                                        st.markdown(f"**User ({ts})**: {row['text']}")
-                                    else:
-                                        st.markdown(f"**Assistant ({ts})**: {row['text']}")
-            with tab_b:
-                st.subheader(f"Danh sách prompt của phòng ban {selected_dep}")
-                show_cols = [
-                    "create_time", "conversation_title", "text", "topic", "purpose", "prompt_quality", "word_count", "cluster"
-                ]
-                st.dataframe(
-                    user_prompts_dep[show_cols]
-                    .sort_values("create_time")
-                    .rename(
-                        columns={
-                            "create_time": "Thời gian",
-                            "conversation_title": "Tiêu đề hội thoại",
-                            "text": "Nội dung prompt",
-                            "topic": "Chủ đề",
-                            "purpose": "Mục đích",
-                            "prompt_quality": "Điểm chất lượng",
-                            "word_count": "Số từ",
-                            "cluster": "Nhóm",
-                        }
-                    )
-                )
-            with tab_c:
-                st.subheader(f"Câu trả lời của Assistant – phòng ban {selected_dep}")
-                st.dataframe(
-                    assistant_dep[["create_time", "conversation_title", "text"]]
-                    .sort_values("create_time")
-                    .rename(
-                        columns={
-                            "create_time": "Thời gian",
-                            "conversation_title": "Tiêu đề hội thoại",
-                            "text": "Nội dung",
-                        }
-                    )
-                )
-            with tab_d:
-                st.subheader(f"Dữ liệu gốc – phòng ban {selected_dep}")
-                st.dataframe(raw_dep.sort_values("create_time"))
+        # Write to Excel
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="xlsxwriter", datetime_format="yyyy-mm-dd HH:MM") as writer:
+            # Summary sheet matching template
+            summary_df.to_excel(writer, index=False, sheet_name="Summary")
+            # Write other sheets for detailed analysis
+            by_dep.to_excel(writer, index=False, sheet_name="Overview_Departments")
+            # collapse multiindex for topics and purposes for export
+            by_topic.to_excel(writer, index=False, sheet_name="Topics_By_Department")
+            # Purpose counts by department
+            by_purpose = user_prompts_df.groupby(["department","purpose"], dropna=False).size().reset_index(name="prompts")
+            by_purpose.to_excel(writer, index=False, sheet_name="Purposes_By_Department")
+            conv_stats.to_excel(writer, index=False, sheet_name="Conversations")
+            user_prompts_df.to_excel(writer, index=False, sheet_name="User_Prompts")
+            assistant_df.to_excel(writer, index=False, sheet_name="Assistant_Replies")
+            month_df.to_excel(writer, index=False, sheet_name="Raw")
 
-        # ====== EXPORTS ======
-        st.header("Xuất báo cáo")
-        try:
-            import xlsxwriter
-            buffer = io.BytesIO()
-            workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
-            worksheet = workbook.add_worksheet("By Dept")
-            # Define formats
-            header_fmt = workbook.add_format({
-                "bold": True,
-                "align": "center",
-                "valign": "vcenter",
-                "border": 1,
-                "text_wrap": True,
-            })
-            text_fmt = workbook.add_format({
-                "align": "left",
-                "valign": "top",
-                "border": 1,
-                "text_wrap": True,
-            })
-            num_fmt = workbook.add_format({
-                "align": "center",
-                "valign": "vcenter",
-                "border": 1,
-                "num_format": "0.00",
-            })
-            int_fmt = workbook.add_format({
-                "align": "center",
-                "valign": "vcenter",
-                "border": 1,
-                "num_format": "0",
-            })
-            # Header labels
-            headers = [
-                "Tiêu đề",
-                "#",
-                "Tháng",
-                "Active Days (số ngày có sử dụng)",
-                "Số lượng hội thoại",
-                "Số lượng tin nhắn trung bình trong mỗi hội thoại",
-                "Độ dài trung bình câu prompt (từ)",
-                "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %",
-                "Chủ đề (Tuyển dụng, Thuế, ...) kèm %",
-            ]
-            for col_idx, col_name in enumerate(headers):
-                worksheet.write(0, col_idx, col_name, header_fmt)
-            # Column widths
-            col_widths = [25, 5, 10, 20, 20, 25, 25, 40, 40]
-            for i, width in enumerate(col_widths):
-                worksheet.set_column(i, i, width)
-            # Write data
-            for row_idx, row_data in dept_summary_df.iterrows():
-                worksheet.write(row_idx + 1, 0, row_data["Tiêu đề"], text_fmt)
-                worksheet.write(row_idx + 1, 1, row_data["#"], int_fmt)
-                worksheet.write(row_idx + 1, 2, row_data["Tháng"], text_fmt)
-                worksheet.write(row_idx + 1, 3, row_data["Active Days (số ngày có sử dụng)"], int_fmt)
-                worksheet.write(row_idx + 1, 4, row_data["Số lượng hội thoại"], int_fmt)
-                worksheet.write(row_idx + 1, 5, row_data["Số lượng tin nhắn trung bình trong mỗi hội thoại"], num_fmt)
-                worksheet.write(row_idx + 1, 6, row_data["Độ dài trung bình câu prompt (từ)"], num_fmt)
-                worksheet.write(row_idx + 1, 7, row_data["Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %"], text_fmt)
-                worksheet.write(row_idx + 1, 8, row_data["Chủ đề (Tuyển dụng, Thuế, ...) kèm %"], text_fmt)
-            workbook.close()
-            buffer.seek(0)
-            st.download_button(
-                label="⬇️ Tải Excel báo cáo",
-                data=buffer.getvalue(),
-                file_name=f"ai_usage_report_{int(year)}_{int(month):02d}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        except Exception as exc:
-            st.error(f"Lỗi khi tạo file Excel: {exc}")
+        st.download_button(
+            label="⬇️ Tải Excel tổng hợp",
+            data=buffer.getvalue(),
+            file_name=f"chatgpt_report_{int(year)}_{int(month):02d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     else:
         st.info("Chưa có dữ liệu hợp lệ.")
