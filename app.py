@@ -277,22 +277,22 @@ def evaluate_kpi(prompts: int, active_days: int, unique_topics: int = 0) -> tupl
     """
 
     # Xuất sắc nhất: sử dụng gần như hàng ngày, nhiều chủ đề
-    if prompts >= 230 and active_days >= 24 and unique_topics >= 5:
+    if prompts >= 300 and active_days >= 24 and unique_topics >= 20:
         return "Xuất sắc", 100
     # Rất tốt: dùng nhiều, đa dạng
-    if prompts >= 200 and active_days >= 18 and unique_topics >= 4:
+    if prompts >= 250 and active_days >= 20 and unique_topics >= 18:
         return "Rất tốt", 95
     # Tốt+: dùng khá thường xuyên, đa dạng vừa phải
-    if prompts >= 180 and active_days >= 16 and unique_topics >= 4:
+    if prompts >= 200 and active_days >= 17 and unique_topics >= 15:
         return "Tốt+", 90
     # Tốt: theo hướng dẫn “Tốt”
-    if prompts >= 150 and active_days >= 13 and unique_topics >= 3:
+    if prompts >= 170 and active_days >= 14 and unique_topics >= 10:
         return "Tốt", 85
     # Khá: đủ đáp ứng yêu cầu “Sử dụng thường xuyên, ít nhất 5 nội dung”
-    if prompts >= 100 and active_days >= 10:
+    if prompts >= 150 and active_days >= 6:
         return "Khá", 80
     # Trung bình: có sử dụng, nhưng chưa thường xuyên hoặc chưa đa dạng
-    if prompts >= 85 or active_days >= 7:
+    if prompts >= 100 or active_days >= 5:
         return "Trung bình", 50
     # Thấp: rất ít dùng, chưa áp dụng được trong công việc
     if prompts > 0:
