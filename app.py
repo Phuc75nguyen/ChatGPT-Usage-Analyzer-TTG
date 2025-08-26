@@ -9,6 +9,10 @@ from collections import defaultdict
 import pandas as pd
 import streamlit as st
 
+# add openpyxl for working with the provided Excel template
+from openpyxl import load_workbook
+from copy import copy
+
 # ====== CONFIG ======
 st.set_page_config(page_title="AI analysis TTG", layout="wide")
 LOCAL_TZ = tz.gettz("Asia/Ho_Chi_Minh")
@@ -217,6 +221,56 @@ def tag_topic(text, rules):
             return topic
     return "Khác"
 
+# ====== PURPOSE TAGGING (additional heuristics for report template) ======
+# The template requires a breakdown of "Mục đích sử dụng" (purpose of use) such as
+# Tra cứu, tóm tắt, viết mail, học tập…  Because the raw data does not
+# explicitly encode purpose, we define a simple heuristic mapping from
+# keywords to broad purpose categories.  You can extend or adjust this
+# dictionary to better fit your data.  Each entry maps a purpose name to a
+# list of keywords; if any keyword appears in the prompt text, that purpose
+# will be assigned.  If no keywords match, the prompt is tagged as "Khác".
+PURPOSE_RULES = {
+    "Tra cứu": [
+        "tra cứu", "tra cuu", "lookup", "search", "tìm", "tìm kiếm", "là gì", "bao nhiêu", "tại sao", "how", "what",
+    ],
+    "Tóm tắt": [
+        "tóm tắt", "tóm tat", "summary", "summarize", "tổng kết", "phân tách", "đúc kết", "tóm lược",
+    ],
+    "Viết mail": [
+        "email", "mail", "thư", "gửi mail", "viết mail", "trả lời email", "reply email", "forward",
+    ],
+    "Học tập": [
+        "học", "học tập", "learn", "study", "bài học", "lesson", "giảng", "nghiên cứu",
+    ],
+    "Dịch thuật": [
+        "dịch", "dich", "translate", "dịch sang", "chuyển ngữ", "phiên dịch",
+    ],
+    "Viết code": [
+        "code", "python", "java", "c++", "javascript", "program", "script", "sql", "lập trình",
+    ],
+    "Báo cáo": [
+        "báo cáo", "report", "thống kê", "dashboard", "biểu đồ", "chart",
+    ],
+    "Kế hoạch": [
+        "kế hoạch", "plan", "planning", "project", "dự án", "chiến dịch",
+    ],
+}
+
+def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
+    """
+    Assign a high‑level purpose category to a user prompt based on keyword
+    matching.  Returns the first matching purpose name, or "Khác" if none
+    match.  This is a simple heuristic and can be tuned by editing
+    PURPOSE_RULES above.
+    """
+    if not text:
+        return "Khác"
+    t = text.lower()
+    for purpose, kws in rules.items():
+        if any(kw.lower() in t for kw in kws):
+            return purpose
+    return "Khác"
+
 # ====== OPTIONAL: CLUSTERING (if sklearn available) ======
 def try_cluster(df_user_prompts, n_clusters=15):
     try:
@@ -273,11 +327,22 @@ except Exception:
 # ====== PARSE & COMBINE ======
 if uploaded_files:
     frames = []
+    # Each uploaded file is expected to correspond to a single ChatGPT Plus account.
+    # We use the base filename (without extension) as both the account label and
+    # the department name.  This allows admins to rename the JSON files to the
+    # actual department names before uploading.  If a mapping CSV is provided
+    # (see below), it will override this behaviour.
     for f in uploaded_files:
         try:
             content = json.load(f)
-            account_label = f.name.rsplit(".", 1)[0]  # filename as account label
+            # derive department/account name from filename (strip extension)
+            base_name = f.name.rsplit(".", 1)[0]
+            account_label = base_name
+            # parse conversations for this account
             df = parse_conversation_json(content, account_label=account_label)
+            if not df.empty:
+                # assign department equal to the file name by default
+                df["department"] = base_name
             frames.append(df)
         except Exception as e:
             st.error(f"Không đọc được {f.name}: {e}")
@@ -287,23 +352,26 @@ if uploaded_files:
         # Filter to selected month
         month_df = filter_month(all_df, int(year), int(month))
 
-        # Load department map if given
+        # Optionally override department names using an uploaded mapping CSV.  The CSV
+        # must contain two columns: account and department.  If provided, it will
+        # map the automatically derived account label (from the filename) to a
+        # custom department name.  Otherwise, the department column populated
+        # during parsing (equal to the filename) is retained.
         if dept_map_file is not None:
             try:
                 map_df = pd.read_csv(dept_map_file)
-                if not {"account","department"}.issubset(set(map_df.columns.str.lower())):
-                    # try non-lowercase
-                    need = {"account","department"}
-                    if not need.issubset(set(map_df.columns)):
-                        raise ValueError("CSV cần 2 cột: account, department")
-                # normalize cols
-                map_df.columns = [c.lower() for c in map_df.columns]
-                month_df = month_df.merge(map_df[["account","department"]], on="account", how="left")
+                # accept either lowercase or original case column names
+                lower_cols = [c.lower() for c in map_df.columns]
+                map_df.columns = lower_cols
+                if not {"account", "department"}.issubset(set(lower_cols)):
+                    raise ValueError("CSV cần 2 cột: account, department")
+                # perform left join to override departments based on account
+                month_df = month_df.merge(map_df[["account", "department"]], on="account", how="left", suffixes=("", "_override"))
+                # if override department exists, use it; otherwise keep original department
+                month_df["department"] = month_df["department_override"].combine_first(month_df["department"])
+                month_df.drop(columns=["department_override"], inplace=True)
             except Exception as e:
                 st.error(f"Không đọc được map CSV: {e}")
-                month_df["department"] = None
-        else:
-            month_df["department"] = None
 
         # Basic derived fields
         month_df["is_user"] = month_df["role"].eq("user")
@@ -319,10 +387,13 @@ if uploaded_files:
             active_days=("date", lambda s: s.nunique())
         ).reset_index()
 
-        # Topic tagging & prompt quality on user prompts
+        # Topic tagging, purpose tagging & prompt quality on user prompts
         user_prompts_df = month_df[month_df["is_user"]].copy()
         user_prompts_df["topic"] = user_prompts_df["text"].apply(lambda t: tag_topic(t, topic_rules))
+        user_prompts_df["purpose"] = user_prompts_df["text"].apply(lambda t: tag_purpose(t))
         user_prompts_df["prompt_quality"] = user_prompts_df["text"].apply(score_prompt_quality)
+        # compute prompt word count for summary metrics
+        user_prompts_df["word_count"] = user_prompts_df["text"].apply(lambda t: len(str(t).split()) if pd.notna(t) else 0)
 
         # Try clustering
         if use_clustering:
@@ -365,58 +436,254 @@ if uploaded_files:
         qual = user_prompts_df.groupby("department", dropna=False)["prompt_quality"].agg(["count","mean","median","min","max"]).reset_index()
         st.dataframe(qual)
 
-        # ====== DETAILS TABS ======
-        tab1, tab2, tab3, tab4 = st.tabs(["Cuộc hội thoại", "Prompts (user)", "Assistant trả lời", "Dữ liệu gốc"])
+        # ====== SUMMARY FOR EXCEL TEMPLATE ======
+        # Compute per‑department summary metrics required by the provided Excel template.
+        # These metrics include active days, conversation counts, average message counts,
+        # average prompt length (words), purpose distribution and topic distribution.
+        dept_summary_rows = []
+        # Determine the reporting month string (e.g., "08-2025")
+        report_month_str = f"{int(month):02d}-{int(year)}"
+        all_departments = sorted([d for d in month_df["department"].dropna().unique()])
+        for idx, dep in enumerate(all_departments, start=1):
+            # Filter conversation stats and prompts for this department
+            convs = conv_stats[conv_stats["department"] == dep]
+            prompts = user_prompts_df[user_prompts_df["department"] == dep]
+            if convs.empty:
+                continue
+            # Number of conversations
+            conv_count = convs["conversation_id"].nunique()
+            # Average messages per conversation
+            avg_msgs = float(convs["total_msgs"].mean()) if not convs.empty else 0
+            # Active days: unique dates in raw messages for this department
+            active_days = month_df[month_df["department"] == dep]["date"].nunique()
+            # Average prompt length (words)
+            avg_prompt_len = float(prompts["word_count"].mean()) if not prompts.empty else 0
+            # Purpose distribution
+            purpose_counts = prompts["purpose"].value_counts()
+            total_p = purpose_counts.sum() if not purpose_counts.empty else 0
+            purpose_lines = []
+            if total_p > 0:
+                for purpose_name, count in purpose_counts.items():
+                    pct = count / total_p
+                    # round percentage to nearest integer for display (e.g. 30%)
+                    purpose_lines.append(f"+ {purpose_name} ({pct:.0%})")
+            purpose_str = "\n".join(purpose_lines)
+            # Topic distribution
+            topic_counts = prompts["topic"].value_counts()
+            total_t = topic_counts.sum() if not topic_counts.empty else 0
+            topic_lines = []
+            if total_t > 0:
+                for topic_name, count in topic_counts.items():
+                    pct = count / total_t
+                    topic_lines.append(f"+ {topic_name} ({pct:.0%})")
+            topic_str = "\n".join(topic_lines)
+            # Build summary row
+            dept_summary_rows.append({
+                "Tiêu đề": dep,
+                "#": idx,
+                "Tháng": report_month_str,
+                "Active Days (số ngày có sử dụng)": active_days,
+                "Số lượng hội thoại": conv_count,
+                "Số lượng tin nhắn trung bình  trong mỗi hội thoại": avg_msgs,
+                "Độ dài trung bình câu prompt (từ)": avg_prompt_len,
+                "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %": purpose_str,
+                "Chủ đề (Tuyển dụng, Thuế, ...) kèm %": topic_str,
+            })
+        dept_summary_df = pd.DataFrame(dept_summary_rows)
 
-        with tab1:
-            st.dataframe(conv_stats.sort_values("first_time"))
+        # ====== DETAILS PER DEPARTMENT ======
+        # Allow the user to drill down into each department separately.  A
+        # selectbox lists all departments present in the data, and selecting
+        # one will display only its conversations, prompts, replies and raw
+        # messages.  Additionally, a conversation selector allows viewing
+        # detailed messages in a modal popup.
+        st.header("Chi tiết theo phòng ban")
+        departments = sorted([d for d in month_df["department"].dropna().unique()])
+        if not departments:
+            st.info("Không có phòng ban nào được tìm thấy trong dữ liệu.")
+        else:
+            selected_dep = st.selectbox(
+                "Chọn phòng ban", options=departments, index=0, key="selected_dep"
+            )
+            # Filter dataframes for selected department
+            conv_stats_dep = conv_stats[conv_stats["department"] == selected_dep]
+            user_prompts_dep = user_prompts_df[user_prompts_df["department"] == selected_dep]
+            assistant_dep = month_df[(month_df["department"] == selected_dep) & (month_df["is_assistant"])]
+            raw_dep = month_df[month_df["department"] == selected_dep]
 
-        with tab2:
-            show_cols = ["account","department","conversation_title","create_time","text","topic","prompt_quality","cluster"]
-            st.dataframe(user_prompts_df[show_cols].sort_values("create_time"))
+            # Create tabs for each detail type within the department
+            tab_a, tab_b, tab_c, tab_d = st.tabs([
+                "Cuộc hội thoại", "Prompts (user)", "Assistant trả lời", "Dữ liệu gốc"
+            ])
 
-        with tab3:
-            assistant_df = month_df[month_df["is_assistant"]][["account","department","conversation_title","create_time","text"]]
-            st.dataframe(assistant_df.sort_values("create_time"))
+            # Conversation list with optional detail view
+            with tab_a:
+                st.subheader(f"Danh sách hội thoại của phòng ban {selected_dep}")
+                # Display conversation summary table
+                st.dataframe(
+                    conv_stats_dep
+                    .sort_values("first_time")
+                    .rename(
+                        columns={
+                            "conversation_id": "ID hội thoại",
+                            "conversation_title": "Tiêu đề hội thoại",
+                            "first_time": "Bắt đầu",
+                            "last_time": "Kết thúc",
+                            "user_prompts": "Số prompt",
+                            "assistant_msgs": "Số trả lời",
+                            "total_msgs": "Tổng tin nhắn",
+                            "active_days": "Số ngày hoạt động",
+                        }
+                    )
+                )
 
-        with tab4:
-            st.dataframe(month_df.sort_values("create_time"))
+                # Conversation detail selector
+                if not conv_stats_dep.empty:
+                    conv_choices = conv_stats_dep[["conversation_id", "conversation_title"]].apply(
+                        lambda r: f"{r['conversation_id']} – {r['conversation_title']}", axis=1
+                    ).tolist()
+                    default_idx = 0
+                    selected_conv_label = st.selectbox(
+                        "Chọn hội thoại để xem chi tiết", options=conv_choices, index=default_idx, key="conv_select"
+                    )
+                    # Extract conversation_id from the selected label (split on the first dash)
+                    selected_conv_id = selected_conv_label.split("–", 1)[0].strip()
+                    # Button to open modal with conversation details
+                    if st.button("Xem chi tiết", key="detail_btn"):
+                        # Use a modal window if available (Streamlit >=1.25), otherwise fallback to expander
+                        show_in_modal = hasattr(st, "modal")
+                        container_ctx = st.modal if show_in_modal else st.expander
+                        title_str = f"Chi tiết hội thoại: {selected_conv_label}"
+                        with container_ctx(title_str):
+                            conv_msgs = raw_dep[
+                                (raw_dep["conversation_id"].astype(str) == selected_conv_id)
+                            ].sort_values("create_time")
+                            if conv_msgs.empty:
+                                st.info("Không có dữ liệu cho hội thoại này.")
+                            else:
+                                # Display messages sequentially
+                                for _, row in conv_msgs.iterrows():
+                                    ts = row["create_time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["create_time"]) else ""
+                                    if row["role"] == "user":
+                                        st.markdown(f"**User ({ts})**: {row['text']}")
+                                    else:
+                                        st.markdown(f"**Assistant ({ts})**: {row['text']}")
+
+            with tab_b:
+                st.subheader(f"Danh sách prompt của phòng ban {selected_dep}")
+                show_cols = [
+                    "create_time",
+                    "conversation_title",
+                    "text",
+                    "topic",
+                    "purpose",
+                    "prompt_quality",
+                    "word_count",
+                    "cluster",
+                ]
+                st.dataframe(
+                    user_prompts_dep[show_cols]
+                    .sort_values("create_time")
+                    .rename(
+                        columns={
+                            "create_time": "Thời gian",
+                            "conversation_title": "Tiêu đề hội thoại",
+                            "text": "Nội dung prompt",
+                            "topic": "Chủ đề",
+                            "purpose": "Mục đích",
+                            "prompt_quality": "Điểm chất lượng",
+                            "word_count": "Số từ",
+                            "cluster": "Nhóm",
+                        }
+                    )
+                )
+
+            with tab_c:
+                st.subheader(f"Câu trả lời của Assistant – phòng ban {selected_dep}")
+                st.dataframe(
+                    assistant_dep[["create_time", "conversation_title", "text"]]
+                    .sort_values("create_time")
+                    .rename(
+                        columns={
+                            "create_time": "Thời gian",
+                            "conversation_title": "Tiêu đề hội thoại",
+                            "text": "Nội dung"
+                        }
+                    )
+                )
+
+            with tab_d:
+                st.subheader(f"Dữ liệu gốc – phòng ban {selected_dep}")
+                st.dataframe(
+                    raw_dep.sort_values("create_time")
+                )
 
         # ====== EXPORTS ======
         st.header("Xuất báo cáo")
-        # Excel
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter", datetime_format="yyyy-mm-dd HH:MM") as writer:
-            by_dep.to_excel(writer, index=False, sheet_name="Overview_Departments")
-            by_topic.to_excel(writer, index=False, sheet_name="Topics")
-            qual.to_excel(writer, index=False, sheet_name="Prompt_Quality")
-            conv_stats.to_excel(writer, index=False, sheet_name="Conversations")
-            user_prompts_df.to_excel(writer, index=False, sheet_name="User_Prompts")
-            assistant_df.to_excel(writer, index=False, sheet_name="Assistant_Replies")
-            month_df.to_excel(writer, index=False, sheet_name="Raw")
 
-        st.download_button(
-            label="⬇️ Tải Excel tổng hợp",
-            data=buffer.getvalue(),
-            file_name=f"chatgpt_report_{int(year)}_{int(month):02d}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        # Export summary report using the provided Excel template.  The
+        # template file should exist in the current directory under the
+        # name "AI Usage report Template.xlsx".  The summary dataframe
+        # dept_summary_df will be inserted into the sheet named "By Dept"
+        # starting from the example row.  Styles from the example row are
+        # copied to preserve formatting.
+        try:
+            template_path = "AI Usage report Template.xlsx"
+            wb = load_workbook(template_path)
+            ws = wb[wb.sheetnames[0]]  # assuming the first sheet is "By Dept"
+            # Identify header row containing "Tiêu đề" and the example row beneath it
+            header_row_idx = None
+            for row in ws.iter_rows(min_row=1, max_row=10):
+                first_value = row[0].value
+                if isinstance(first_value, str) and "Tiêu đề" in first_value:
+                    header_row_idx = row[0].row
+                    break
+            if header_row_idx is None:
+                raise RuntimeError("Không tìm thấy hàng tiêu đề trong template")
+            example_row_idx = header_row_idx + 1
+            # Determine template headers by reading the header row
+            template_headers = [cell.value for cell in ws[header_row_idx]]
+            # Remove any existing data rows beyond the example row
+            if ws.max_row > example_row_idx:
+                ws.delete_rows(example_row_idx + 1, ws.max_row - example_row_idx)
+            # For each summary row, append a new row with copied styles
+            for i, row_data in dept_summary_df.iterrows():
+                target_row_idx = example_row_idx + i - 1  # start from example row position
+                if target_row_idx > ws.max_row:
+                    ws.append([None] * ws.max_column)
+                for col_idx, header in enumerate(template_headers, start=1):
+                    cell = ws.cell(row=target_row_idx, column=col_idx)
+                    template_cell = ws.cell(row=example_row_idx, column=col_idx)
+                    value = row_data.get(header, "")
+                    # write value
+                    cell.value = value
+                    # copy style
+                    cell._style = copy(template_cell._style)
+            # Save workbook to buffer
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            st.download_button(
+                label="⬇️ Tải Excel báo cáo",
+                data=buffer.getvalue(),
+                file_name=f"ai_usage_report_{int(year)}_{int(month):02d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except Exception as exc:
+            st.error(f"Lỗi khi tạo file Excel: {exc}")
 
-        # Optional: export từng phòng ban thành ZIP CSV
-        if month_df["department"].notna().any():
+        # Optional: export user prompts by department as a ZIP of CSVs
+        if not user_prompts_df.empty:
             zbuf = io.BytesIO()
             with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
                 for dep, dfdep in user_prompts_df.groupby("department"):
-                    if pd.isna(dep):
-                        depname = "Unknown"
-                    else:
-                        depname = str(dep)
+                    depname = "Unknown" if pd.isna(dep) else str(dep)
                     zf.writestr(f"{depname}_user_prompts.csv", dfdep.to_csv(index=False))
             st.download_button(
                 "⬇️ Tải ZIP CSV theo phòng ban",
                 data=zbuf.getvalue(),
                 file_name=f"user_prompts_by_department_{int(year)}_{int(month):02d}.zip",
-                mime="application/zip"
+                mime="application/zip",
             )
 
     else:
