@@ -293,11 +293,11 @@ def evaluate_kpi(prompts: int, active_days: int, unique_topics: int = 0) -> tupl
       * Khá (50%): prompts ≥ 5 or active_days ≥ 3
       * Thấp (0%): otherwise
     """
-    if prompts >= 20 and active_days >= 10 and unique_topics >= 3:
+    if prompts >= 50 and active_days >= 20 and unique_topics >= 3:
         return "Xuất sắc", 100
-    if prompts >= 10 and active_days >= 5:
+    if prompts >= 30 and active_days >= 13:
         return "Tốt", 80
-    if prompts >= 5 or active_days >= 3:
+    if prompts >= 20 or active_days >= 10:
         return "Khá", 50
     return "Thấp", 0
 
