@@ -268,6 +268,39 @@ def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
             return purpose
     return "Khác"
 
+# ====== KPI RATING ======
+def evaluate_kpi(prompts: int, active_days: int, unique_topics: int = 0) -> tuple[str, int]:
+    """Evaluate ChatGPT usage compliance and return a rating and score.
+
+    Parameters
+    ----------
+    prompts : int
+        Number of user prompts in the period.
+    active_days : int
+        Number of distinct days on which ChatGPT was used.
+    unique_topics : int, optional
+        Number of different topic categories covered in the period.
+
+    Returns
+    -------
+    tuple[str, int]
+        A pair containing the rating name (Xuất sắc, Tốt, Khá, Thấp) and
+        the corresponding KPI percentage (100, 80, 50, 0).
+
+    The heuristic below approximates the company guidelines:
+      * Xuất sắc (100%): prompts ≥ 20, active_days ≥ 10 and unique_topics ≥ 3
+      * Tốt (80%): prompts ≥ 10 and active_days ≥ 5
+      * Khá (50%): prompts ≥ 5 or active_days ≥ 3
+      * Thấp (0%): otherwise
+    """
+    if prompts >= 20 and active_days >= 10 and unique_topics >= 3:
+        return "Xuất sắc", 100
+    if prompts >= 10 and active_days >= 5:
+        return "Tốt", 80
+    if prompts >= 5 or active_days >= 3:
+        return "Khá", 50
+    return "Thấp", 0
+
 # ====== OPTIONAL: CLUSTERING (if sklearn available) ======
 def try_cluster(df_user_prompts, n_clusters=15):
     try:
@@ -427,9 +460,9 @@ if uploaded_files:
         by_topic = user_prompts_df.groupby(["department","topic"], dropna=False).size().reset_index(name="prompts")
         st.dataframe(by_topic)
 
-        st.subheader("Điểm chất lượng prompt")
-        qual = user_prompts_df.groupby("department", dropna=False)["prompt_quality"].agg(["count","mean","median","min","max"]).reset_index()
-        st.dataframe(qual)
+        # The detailed statistics of prompt quality (mean/median/min/max) have been
+        # removed per user request.  Prompt quality is now reflected in the KPI
+        # compliance section below.
 
         # ====== SUMMARY DATA FOR EXCEL REPORT ======
         # Prepare a per‑department summary with metrics required by the template
@@ -463,6 +496,10 @@ if uploaded_files:
                     pct = count / total_t
                     topic_lines.append(f"+ {t_name} ({pct:.0%})")
             topic_str = "\n".join(topic_lines)
+            # Determine KPI evaluation for this department
+            prompts_count = len(prompts_dep)
+            unique_topics_count = int(prompts_dep["topic"].nunique()) if not prompts_dep.empty else 0
+            rating_name, kpi_score = evaluate_kpi(prompts_count, active_days, unique_topics_count)
             dept_summary_rows.append({
                 "Tiêu đề": dep,
                 "#": idx,
@@ -473,6 +510,8 @@ if uploaded_files:
                 "Độ dài trung bình câu prompt (từ)": avg_prompt_len,
                 "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %": purpose_str,
                 "Chủ đề (Tuyển dụng, Thuế, ...) kèm %": topic_str,
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)": rating_name,
+                "Điểm KPIs %": kpi_score,
             })
         dept_summary_df = pd.DataFrame(dept_summary_rows)
 
@@ -568,6 +607,32 @@ if uploaded_files:
                 st.subheader(f"Dữ liệu gốc – phòng ban {selected_dep}")
                 st.dataframe(raw_dep.sort_values("create_time"))
 
+        # ====== KPI COMPLIANCE OVERVIEW ======
+        st.subheader("Tuân thủ quy định về ChatGPT")
+        st.markdown(
+            """
+            **Hướng dẫn chấm điểm KPIs**
+            
+            - **Xuất sắc (100%)**: sử dụng thường xuyên ChatGPT trong công việc hằng ngày, có nhiều nội dung tương tác đa dạng và trọng tâm, đóng góp trực tiếp vào công việc cụ thể cả trong chuyên môn lẫn quản trị vận hành, mang lại hiệu quả thấy rõ cho tổ chức.
+            - **Tốt (80%)**: sử dụng thường xuyên ChatGPT trong công việc hằng ngày, có từ 5 nội dung đóng góp vào công việc cụ thể, mang lại hiệu quả thấy rõ.
+            - **Khá (50%)**: có tương tác sử dụng ChatGPT nhưng chưa thường xuyên hoặc tương tác thường xuyên nhưng nội dung chưa trọng tâm, dẫn đến ứng dụng chưa cao trong công việc.
+            - **Thấp (0%)**: ít tương tác trên ứng dụng ChatGPT, nội dung hỏi qua loa, chưa ứng dụng hoặc ứng dụng được rất ít trong công việc.
+            """,
+            unsafe_allow_html=True,
+        )
+        # Display KPI rating per department
+        if not dept_summary_df.empty:
+            kpi_table = dept_summary_df[[
+                "Tiêu đề",
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)",
+                "Điểm KPIs %",
+            ]].rename(columns={
+                "Tiêu đề": "Phòng ban",
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)": "Đánh giá",
+                "Điểm KPIs %": "KPIs (%)",
+            })
+            st.dataframe(kpi_table)
+
         # ====== EXPORTS ======
         st.header("Xuất báo cáo")
         try:
@@ -612,11 +677,13 @@ if uploaded_files:
                 "Độ dài trung bình câu prompt (từ)",
                 "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %",
                 "Chủ đề (Tuyển dụng, Thuế, ...) kèm %",
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)",
+                "Điểm KPIs %",
             ]
             for col_idx, col_name in enumerate(headers):
                 worksheet.write(0, col_idx, col_name, header_fmt)
             # Column widths
-            col_widths = [25, 5, 10, 20, 20, 25, 25, 40, 40]
+            col_widths = [25, 5, 10, 20, 20, 25, 25, 40, 40, 25, 15]
             for i, width in enumerate(col_widths):
                 worksheet.set_column(i, i, width)
             # Write data
@@ -630,6 +697,8 @@ if uploaded_files:
                 worksheet.write(row_idx + 1, 6, row_data["Độ dài trung bình câu prompt (từ)"], num_fmt)
                 worksheet.write(row_idx + 1, 7, row_data["Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %"], text_fmt)
                 worksheet.write(row_idx + 1, 8, row_data["Chủ đề (Tuyển dụng, Thuế, ...) kèm %"], text_fmt)
+                worksheet.write(row_idx + 1, 9, row_data["Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)"], text_fmt)
+                worksheet.write(row_idx + 1, 10, row_data["Điểm KPIs %"], int_fmt)
             workbook.close()
             buffer.seek(0)
             st.download_button(
