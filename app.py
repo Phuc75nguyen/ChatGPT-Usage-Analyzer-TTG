@@ -270,36 +270,36 @@ def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
 
 # ====== KPI RATING ======
 def evaluate_kpi(prompts: int, active_days: int, unique_topics: int = 0) -> tuple[str, int]:
-    """Evaluate ChatGPT usage compliance and return a rating and score.
-
-    Parameters
-    ----------
-    prompts : int
-        Number of user prompts in the period.
-    active_days : int
-        Number of distinct days on which ChatGPT was used.
-    unique_topics : int, optional
-        Number of different topic categories covered in the period.
-
-    Returns
-    -------
-    tuple[str, int]
-        A pair containing the rating name (Xuất sắc, Tốt, Khá, Thấp) and
-        the corresponding KPI percentage (100, 80, 50, 0).
-
-    The heuristic below approximates the company guidelines:
-      * Xuất sắc (100%): prompts ≥ 20, active_days ≥ 10 and unique_topics ≥ 3
-      * Tốt (80%): prompts ≥ 10 and active_days ≥ 5
-      * Khá (50%): prompts ≥ 5 or active_days ≥ 3
-      * Thấp (0%): otherwise
     """
-    if prompts >= 50 and active_days >= 20 and unique_topics >= 3:
+    Chấm điểm KPIs dựa trên số prompt, số ngày hoạt động và độ đa dạng chủ đề.
+
+    Điểm được chia nhỏ thành các mức: 0, 25, 50, 80, 85, 90, 95, 100 (%).
+    """
+
+    # Xuất sắc nhất: sử dụng gần như hàng ngày, nhiều chủ đề
+    if prompts >= 230 and active_days >= 24 and unique_topics >= 5:
         return "Xuất sắc", 100
-    if prompts >= 30 and active_days >= 13:
-        return "Tốt", 80
-    if prompts >= 20 or active_days >= 10:
-        return "Khá", 50
-    return "Thấp", 0
+    # Rất tốt: dùng nhiều, đa dạng
+    if prompts >= 200 and active_days >= 18 and unique_topics >= 4:
+        return "Rất tốt", 95
+    # Tốt+: dùng khá thường xuyên, đa dạng vừa phải
+    if prompts >= 180 and active_days >= 16 and unique_topics >= 4:
+        return "Tốt+", 90
+    # Tốt: theo hướng dẫn “Tốt”
+    if prompts >= 150 and active_days >= 13 and unique_topics >= 3:
+        return "Tốt", 85
+    # Khá: đủ đáp ứng yêu cầu “Sử dụng thường xuyên, ít nhất 5 nội dung”
+    if prompts >= 100 and active_days >= 10:
+        return "Khá", 80
+    # Trung bình: có sử dụng, nhưng chưa thường xuyên hoặc chưa đa dạng
+    if prompts >= 85 or active_days >= 7:
+        return "Trung bình", 50
+    # Thấp: rất ít dùng, chưa áp dụng được trong công việc
+    if prompts > 0:
+        return "Thấp", 25
+    # Không dùng: 0 điểm
+    return "Không sử dụng", 0
+
 
 # ====== OPTIONAL: CLUSTERING (if sklearn available) ======
 def try_cluster(df_user_prompts, n_clusters=15):
