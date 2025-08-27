@@ -269,50 +269,35 @@ def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
     return "Khác"
 
 # ====== KPI RATING ======
-def evaluate_kpi(prompts: float, active_days: int, unique_topics: int = 0) -> tuple[str, int]:
+def evaluate_kpi(prompts: int, active_days: int, unique_topics: int = 0) -> tuple[str, int]:
     """
-    Đánh giá mức độ tuân thủ ChatGPT theo KPIs.
+    Chấm điểm KPIs dựa trên số prompt, số ngày hoạt động và độ đa dạng chủ đề.
 
-    Tham số `prompts` ở đây nên là **số prompt trung bình mỗi người dùng** trong
-    phòng ban, để đảm bảo công bằng giữa các phòng có quy mô khác nhau.
-    
-    Điểm KPIs chia theo các mức: 0, 25, 50, 80, 85, 90, 95, 100 (%).
-    
-    Quy tắc gợi ý:
-      * Xuất sắc (100%): trung bình ≥ 10 prompt/người, active_days ≥ 12, unique_topics ≥ 5
-      * Rất tốt (95%): trung bình ≥ 8, active_days ≥ 10, unique_topics ≥ 4
-      * Tốt+ (90%): trung bình ≥ 6, active_days ≥ 8, unique_topics ≥ 4
-      * Tốt (85%): trung bình ≥ 5, active_days ≥ 6, unique_topics ≥ 3
-      * Khá (80%): trung bình ≥ 4, active_days ≥ 5
-      * Trung bình (50%): trung bình ≥ 3 hoặc active_days ≥ 4
-      * Thấp (25%): trung bình > 0
-      * Không sử dụng (0%): không có prompt nào
+    Điểm được chia nhỏ thành các mức: 0, 25, 50, 80, 85, 90, 95, 100 (%).
     """
-    #Các tham số prompts, active_days, unique_topics là các giá trị đã được tính toán từ dữ liệu
-    #Tuy nhiên các tham số này chưa phản ánh đúng bản chất, chưa thể hiện được sự công bằng giữa các phòng ban
-    #Vì có phòng ban nhiều nhân sự, có phòng ban ít nhân sự.
-    # Xuất sắc: sử dụng gần như hàng ngày, nhiều chủ đề, prompt/người cao
-    if prompts >= 300 and active_days >= 24 and unique_topics >= 5:
+
+    # Xuất sắc nhất: sử dụng gần như hàng ngày, nhiều chủ đề
+    if prompts >= 300 and active_days >= 24 and unique_topics >= 20:
         return "Xuất sắc", 100
     # Rất tốt: dùng nhiều, đa dạng
-    if prompts >= 250 and active_days >= 20 and unique_topics >= 4:
+    if prompts >= 250 and active_days >= 20 and unique_topics >= 18:
         return "Rất tốt", 95
-    # Tốt+: dùng thường xuyên, đa dạng vừa phải
-    if prompts >= 220 and active_days >= 17 and unique_topics >= 4:
-        return "Tốt", 90
+    # Tốt+: dùng khá thường xuyên, đa dạng vừa phải
+    if prompts >= 200 and active_days >= 17 and unique_topics >= 15:
+        return "Tốt+", 90
     # Tốt: theo hướng dẫn “Tốt”
-    if prompts >= 200 and active_days >= 14 and unique_topics >= 3:
-        return "Khá Tốt", 85
-    # Khá: dùng đủ thường xuyên
-    if prompts >= 180 and active_days >= 12:
+    if prompts >= 170 and active_days >= 14 and unique_topics >= 10:
+        return "Tốt", 85
+    # Khá: đủ đáp ứng yêu cầu “Sử dụng thường xuyên, ít nhất 5 nội dung”
+    if prompts >= 150 and active_days >= 6:
         return "Khá", 80
-    # Trung bình: có sử dụng nhưng chưa đều hoặc ít
-    if prompts >= 150 or active_days >= 7:
+    # Trung bình: có sử dụng, nhưng chưa thường xuyên hoặc chưa đa dạng
+    if prompts >= 100 or active_days >= 5:
         return "Trung bình", 50
-    # Thấp: rất ít dùng
+    # Thấp: rất ít dùng, chưa áp dụng được trong công việc
     if prompts > 0:
         return "Thấp", 25
-    # Không sử dụng
+    # Không dùng: 0 điểm
     return "Không sử dụng", 0
 
 
@@ -348,7 +333,7 @@ dept_map_file = st.sidebar.file_uploader(
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    year = st.number_input("Năm", min_value=2024, max_value=2026, value=datetime.now().year, step=1)
+    year = st.number_input("Năm", min_value=2023, max_value=2100, value=datetime.now().year, step=1)
 with col2:
     month = st.number_input("Tháng", min_value=1, max_value=12, value=datetime.now().month, step=1)
 
@@ -513,17 +498,8 @@ if uploaded_files:
             topic_str = "\n".join(topic_lines)
             # Determine KPI evaluation for this department
             prompts_count = len(prompts_dep)
-            # Số người dùng (unique authors) trong phòng ban
-            if not prompts_dep.empty:
-                # Đếm số tác giả (user) khác nhau, bỏ qua giá trị NaN
-                num_users = prompts_dep["author"].dropna().nunique()
-                num_users = int(num_users) if pd.notna(num_users) else 0
-            else:
-                num_users = 0
-            # Tính prompt trung bình mỗi người.  Nếu không có người dùng, đặt 0
-            avg_prompts_per_user = prompts_count / num_users if num_users > 0 else 0.0
             unique_topics_count = int(prompts_dep["topic"].nunique()) if not prompts_dep.empty else 0
-            rating_name, kpi_score = evaluate_kpi(avg_prompts_per_user, active_days, unique_topics_count)
+            rating_name, kpi_score = evaluate_kpi(prompts_count, active_days, unique_topics_count)
             dept_summary_rows.append({
                 "Tiêu đề": dep,
                 "#": idx,
