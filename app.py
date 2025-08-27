@@ -1,7 +1,6 @@
 import io
 import json
 import math
-import zipfile
 from datetime import datetime, timezone
 from dateutil import tz
 from collections import defaultdict
@@ -269,35 +268,50 @@ def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
     return "Khác"
 
 # ====== KPI RATING ======
-def evaluate_kpi(prompts: int, active_days: int, unique_topics: int = 0) -> tuple[str, int]:
+def evaluate_kpi(prompts: float, active_days: int, unique_topics: int = 0, avg_quality: float = 0.0) -> tuple[str, int]:
     """
-    Chấm điểm KPIs dựa trên số prompt, số ngày hoạt động và độ đa dạng chủ đề.
+    Đánh giá mức độ tuân thủ ChatGPT theo KPIs.
 
-    Điểm được chia nhỏ thành các mức: 0, 25, 50, 80, 85, 90, 95, 100 (%).
+    Tham số:
+        prompts (float): số prompt trung bình trên mỗi người dùng trong phòng ban.
+        active_days (int): số ngày có sử dụng ChatGPT trong kỳ.
+        unique_topics (int): số chủ đề khác nhau của các prompt.
+        avg_quality (float): điểm chất lượng prompt trung bình (0–100).
+
+    Mức điểm: 0, 25, 50, 80, 85, 90, 95, 100 (%).
+
+    Quy tắc gợi ý:
+      - Xuất sắc (100%): prompts ≥ 10, active_days ≥ 12, unique_topics ≥ 5 và avg_quality ≥ 70.
+      - Rất tốt (95%): prompts ≥ 8, active_days ≥ 10, unique_topics ≥ 4 và avg_quality ≥ 60.
+      - Tốt+ (90%): prompts ≥ 6, active_days ≥ 8, unique_topics ≥ 4 và avg_quality ≥ 60.
+      - Tốt (85%): prompts ≥ 5, active_days ≥ 6, unique_topics ≥ 3 và avg_quality ≥ 50.
+      - Khá (80%): prompts ≥ 4, active_days ≥ 5 và avg_quality ≥ 50.
+      - Trung bình (50%): prompts ≥ 3 hoặc active_days ≥ 4 hoặc avg_quality ≥ 40.
+      - Thấp (25%): prompts > 0.
+      - Không sử dụng (0%): không có prompt nào.
     """
-
-    # Xuất sắc nhất: sử dụng gần như hàng ngày, nhiều chủ đề
-    if prompts >= 300 and active_days >= 24 and unique_topics >= 20:
+    # Xuất sắc: sử dụng gần như hàng ngày, đa dạng chủ đề, chất lượng cao
+    if prompts >= 70 and active_days >= 24 and unique_topics >= 6 and avg_quality >= 35:
         return "Xuất sắc", 100
-    # Rất tốt: dùng nhiều, đa dạng
-    if prompts >= 250 and active_days >= 20 and unique_topics >= 18:
+    # Rất tốt: dùng nhiều, đa dạng, chất lượng tốt
+    if prompts >= 60 and active_days >= 20 and unique_topics >= 5 and avg_quality >= 30:
         return "Rất tốt", 95
-    # Tốt+: dùng khá thường xuyên, đa dạng vừa phải
-    if prompts >= 200 and active_days >= 17 and unique_topics >= 15:
+    # Tốt+: dùng thường xuyên, đa dạng, chất lượng khá
+    if prompts >= 50 and active_days >= 17 and unique_topics >= 4 and avg_quality >= 20:
         return "Tốt+", 90
-    # Tốt: theo hướng dẫn “Tốt”
-    if prompts >= 170 and active_days >= 14 and unique_topics >= 10:
+    # Tốt: đáp ứng tiêu chí “Tốt”
+    if prompts >= 40 and active_days >= 14 and unique_topics >= 3 and avg_quality >= 15:
         return "Tốt", 85
-    # Khá: đủ đáp ứng yêu cầu “Sử dụng thường xuyên, ít nhất 5 nội dung”
-    if prompts >= 150 and active_days >= 6:
+    # Khá: sử dụng đủ thường xuyên, chất lượng tạm
+    if prompts >= 25 and active_days >= 12 and avg_quality >= 15:
         return "Khá", 80
-    # Trung bình: có sử dụng, nhưng chưa thường xuyên hoặc chưa đa dạng
-    if prompts >= 100 or active_days >= 5:
+    # Trung bình: có sử dụng nhưng chưa đều hoặc chất lượng thấp
+    if prompts >= 15 or active_days >= 8 or avg_quality >= 5:
         return "Trung bình", 50
-    # Thấp: rất ít dùng, chưa áp dụng được trong công việc
+    # Thấp: rất ít dùng
     if prompts > 0:
         return "Thấp", 25
-    # Không dùng: 0 điểm
+    # Không sử dụng
     return "Không sử dụng", 0
 
 
@@ -376,6 +390,21 @@ if uploaded_files:
         all_df = pd.concat(frames, ignore_index=True)
         # Filter to selected month
         month_df = filter_month(all_df, int(year), int(month))
+
+        # ====== INPUT NUMBER OF STAFF PER DEPARTMENT ======
+        # Before performing aggregations, allow the user to specify how many
+        # employees are in each department.  This helps compute average
+        # prompts per user for fair KPI scoring.
+        dept_staff_counts = {}
+        department_options = sorted([d for d in month_df["department"].dropna().unique()])
+        if department_options:
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("Số lượng nhân sự theo phòng ban")
+            for dep in department_options:
+                # Default to 1 employee if not specified
+                dept_staff_counts[dep] = st.sidebar.number_input(
+                    f"{dep}", min_value=1, value=1, step=1, key=f"staff_{dep}"
+                )
 
         # Load department map if given.  The CSV must contain two columns: account and
         # department.  If provided, the department values from the CSV will
@@ -497,9 +526,17 @@ if uploaded_files:
                     topic_lines.append(f"+ {t_name} ({pct:.0%})")
             topic_str = "\n".join(topic_lines)
             # Determine KPI evaluation for this department
+            # Tổng số prompt trong phòng ban
             prompts_count = len(prompts_dep)
+            # Số nhân sự do người dùng cấu hình cho phòng ban này; mặc định 1
+            num_users = dept_staff_counts.get(dep, 1)
+            # Số prompt trung bình mỗi người (tránh chia cho 0)
+            avg_prompts_per_user = prompts_count / num_users if num_users > 0 else 0.0
+            # Số chủ đề khác nhau
             unique_topics_count = int(prompts_dep["topic"].nunique()) if not prompts_dep.empty else 0
-            rating_name, kpi_score = evaluate_kpi(prompts_count, active_days, unique_topics_count)
+            # Điểm chất lượng prompt trung bình (0–100)
+            mean_quality = float(prompts_dep["prompt_quality"].mean()) if not prompts_dep.empty else 0.0
+            rating_name, kpi_score = evaluate_kpi(avg_prompts_per_user, active_days, unique_topics_count, mean_quality)
             dept_summary_rows.append({
                 "Tiêu đề": dep,
                 "#": idx,
