@@ -268,47 +268,93 @@ def tag_purpose(text: str, rules: dict = PURPOSE_RULES) -> str:
     return "Khác"
 
 # ====== KPI RATING ======
-def evaluate_kpi(prompts: float, active_days: int, unique_topics: int = 0, avg_quality: float = 0.0) -> tuple[str, int]:
+def evaluate_kpi(
+    prompts: int,
+    active_days: int,
+    unique_topics: int = 0,
+    avr_messages: float = 0.0,
+    avr_wordprompts: float = 0.0,
+) -> tuple[str, int]:
     """
-    Đánh giá mức độ tuân thủ ChatGPT theo KPIs.
+    Đánh giá mức độ sử dụng ChatGPT và trả về tên xếp hạng cùng điểm KPI.
 
-    Tham số:
-        prompts (float): số prompt trung bình trên mỗi người dùng trong phòng ban.
-        active_days (int): số ngày có sử dụng ChatGPT trong kỳ.
-        unique_topics (int): số chủ đề khác nhau của các prompt.
-        avg_quality (float): điểm chất lượng prompt trung bình (0–100).
+    Thang điểm xét trên các yếu tố:
+      - prompts: tổng số lượng prompts (user) của phòng ban trong kỳ.
+      - active_days: số ngày sử dụng khác nhau trong kỳ.
+      - unique_topics: số chủ đề khác nhau.
+      - avr_messages: số tin nhắn user trung bình mỗi cuộc hội thoại.
+      - avr_wordprompts: số từ trung bình của mỗi prompt.
 
-    Mức điểm: 0, 25, 50, 80, 85, 90, 95, 100 (%).
+    Kết quả trả về là cặp (xếp hạng, điểm) với các mốc 0, 25, 50, 80, 85, 90, 95, 100.
 
-    Quy tắc gợi ý:
-      - Xuất sắc (100%): prompts ≥ 10, active_days ≥ 12, unique_topics ≥ 5 và avg_quality ≥ 70.
-      - Rất tốt (95%): prompts ≥ 8, active_days ≥ 10, unique_topics ≥ 4 và avg_quality ≥ 60.
-      - Tốt+ (90%): prompts ≥ 6, active_days ≥ 8, unique_topics ≥ 4 và avg_quality ≥ 60.
-      - Tốt (85%): prompts ≥ 5, active_days ≥ 6, unique_topics ≥ 3 và avg_quality ≥ 50.
-      - Khá (80%): prompts ≥ 4, active_days ≥ 5 và avg_quality ≥ 50.
-      - Trung bình (50%): prompts ≥ 3 hoặc active_days ≥ 4 hoặc avg_quality ≥ 40.
-      - Thấp (25%): prompts > 0.
-      - Không sử dụng (0%): không có prompt nào.
+    Quy tắc sử dụng các ngưỡng sau (có thể điều chỉnh tùy theo thực tế):
+      - Xuất sắc (100%): prompts ≥ 300, active_days ≥ 24, unique_topics ≥ 20,
+        avr_messages ≥ 10 và avr_wordprompts ≥ 40.
+      - Rất tốt (95%): prompts ≥ 250, active_days ≥ 20, unique_topics ≥ 18,
+        avr_messages ≥ 8 và avr_wordprompts ≥ 35.
+      - Tốt+ (90%): prompts ≥ 200, active_days ≥ 17, unique_topics ≥ 15,
+        avr_messages ≥ 6 và avr_wordprompts ≥ 30.
+      - Tốt (85%): prompts ≥ 170, active_days ≥ 14, unique_topics ≥ 10,
+        avr_messages ≥ 5 và avr_wordprompts ≥ 25.
+      - Khá (80%): prompts ≥ 150, active_days ≥ 6,
+        avr_messages ≥ 4 và avr_wordprompts ≥ 20.
+      - Trung bình (50%): (prompts ≥ 100 or active_days ≥ 5) and
+        avr_messages ≥ 3 and avr_wordprompts ≥ 15.
+      - Thấp (25%): có sử dụng nhưng không đạt các ngưỡng trên.
+      - Không sử dụng (0%): không có prompt nào trong kỳ.
     """
-    # Xuất sắc: sử dụng gần như hàng ngày, đa dạng chủ đề, chất lượng cao
-    if prompts >= 70 and active_days >= 24 and unique_topics >= 6 and avg_quality >= 35:
+    # Xuất sắc nhất: sử dụng gần như hàng ngày, nhiều chủ đề và nội dung dài
+    if (
+        prompts >= 200
+        and active_days >= 25
+        and unique_topics >= 17
+        and avr_messages >= 10
+        and avr_wordprompts >= 40
+    ):
         return "Xuất sắc", 100
-    # Rất tốt: dùng nhiều, đa dạng, chất lượng tốt
-    if prompts >= 60 and active_days >= 20 and unique_topics >= 5 and avg_quality >= 30:
+    # Rất tốt: dùng nhiều, đa dạng với nội dung khá dài
+    if (
+        prompts >= 150
+        and active_days >= 22
+        and unique_topics >= 14
+        and avr_messages >= 8
+        and avr_wordprompts >= 35
+    ):
         return "Rất tốt", 95
-    # Tốt+: dùng thường xuyên, đa dạng, chất lượng khá
-    if prompts >= 50 and active_days >= 17 and unique_topics >= 4 and avg_quality >= 20:
+    # Tốt+: dùng thường xuyên, đa dạng vừa phải
+    if (
+        prompts >= 120
+        and active_days >= 16
+        and unique_topics >= 12
+        and avr_messages >= 6
+        and avr_wordprompts >= 30
+    ):
         return "Tốt+", 90
-    # Tốt: đáp ứng tiêu chí “Tốt”
-    if prompts >= 40 and active_days >= 14 and unique_topics >= 3 and avg_quality >= 15:
+    # Tốt: đáp ứng yêu cầu “Tốt”
+    if (
+        prompts >= 100
+        and active_days >= 14
+        and unique_topics >= 10
+        and avr_messages >= 5
+        and avr_wordprompts >= 25
+    ):
         return "Tốt", 85
-    # Khá: sử dụng đủ thường xuyên, chất lượng tạm
-    if prompts >= 25 and active_days >= 12 and avg_quality >= 15:
+    # Khá: sử dụng đủ thường xuyên, nội dung tương đối
+    if (
+        prompts >= 100
+        and active_days >= 12
+        and avr_messages >= 4
+        and avr_wordprompts >= 20
+    ):
         return "Khá", 80
-    # Trung bình: có sử dụng nhưng chưa đều hoặc chất lượng thấp
-    if prompts >= 15 or active_days >= 8 or avg_quality >= 5:
+    # Trung bình: có sử dụng nhưng chưa đều hoặc nội dung ngắn
+    if (
+        (prompts >= 100 or active_days >= 5)
+        and avr_messages >= 3
+        and avr_wordprompts >= 15
+    ):
         return "Trung bình", 50
-    # Thấp: rất ít dùng
+    # Thấp: rất ít dùng hoặc nội dung quá ngắn
     if prompts > 0:
         return "Thấp", 25
     # Không sử dụng
@@ -503,11 +549,15 @@ if uploaded_files:
             prompts_dep = user_prompts_df[user_prompts_df["department"] == dep]
             if convs.empty:
                 continue
+            # Số cuộc hội thoại
             conv_count = convs["conversation_id"].nunique()
-            avg_msgs = float(convs["total_msgs"].mean()) if not convs.empty else 0
+            # Số tin nhắn user trung bình mỗi cuộc hội thoại (avr_messages)
+            avr_messages = float(convs["user_prompts"].mean()) if not convs.empty else 0.0
+            # Số ngày hoạt động trong kỳ
             active_days = month_df[month_df["department"] == dep]["date"].nunique()
-            avg_prompt_len = float(prompts_dep["word_count"].mean()) if not prompts_dep.empty else 0
-            # Purpose distribution
+            # Độ dài trung bình câu prompt (số từ)
+            avr_wordprompts = float(prompts_dep["word_count"].mean()) if not prompts_dep.empty else 0.0
+            # Phân bổ mục đích sử dụng
             purpose_counts = prompts_dep["purpose"].value_counts()
             total_p = purpose_counts.sum()
             purpose_lines = []
@@ -516,7 +566,7 @@ if uploaded_files:
                     pct = count / total_p
                     purpose_lines.append(f"+ {p_name} ({pct:.0%})")
             purpose_str = "\n".join(purpose_lines)
-            # Topic distribution
+            # Phân bổ chủ đề
             topic_counts = prompts_dep["topic"].value_counts()
             total_t = topic_counts.sum()
             topic_lines = []
@@ -525,30 +575,38 @@ if uploaded_files:
                     pct = count / total_t
                     topic_lines.append(f"+ {t_name} ({pct:.0%})")
             topic_str = "\n".join(topic_lines)
-            # Determine KPI evaluation for this department
             # Tổng số prompt trong phòng ban
             prompts_count = len(prompts_dep)
-            # Số nhân sự do người dùng cấu hình cho phòng ban này; mặc định 1
-            num_users = dept_staff_counts.get(dep, 1)
-            # Số prompt trung bình mỗi người (tránh chia cho 0)
-            avg_prompts_per_user = prompts_count / num_users if num_users > 0 else 0.0
             # Số chủ đề khác nhau
             unique_topics_count = int(prompts_dep["topic"].nunique()) if not prompts_dep.empty else 0
-            # Điểm chất lượng prompt trung bình (0–100)
-            mean_quality = float(prompts_dep["prompt_quality"].mean()) if not prompts_dep.empty else 0.0
-            rating_name, kpi_score = evaluate_kpi(avg_prompts_per_user, active_days, unique_topics_count, mean_quality)
+            # Số nhân sự do người dùng cấu hình cho phòng ban này; mặc định 1
+            user_num = dept_staff_counts.get(dep, 1)
+            # Đánh giá KPI thô dựa trên tổng số prompt, ngày hoạt động, chủ đề, số tin nhắn và độ dài prompt
+            rating_name, raw_score = evaluate_kpi(
+                prompts_count,
+                active_days,
+                unique_topics_count,
+                avr_messages,
+                avr_wordprompts,
+            )
+            # Tính điểm cuối cùng chia cho số nhân sự để công bằng giữa các phòng ban
+            final_score = 0
+            if user_num > 0:
+                final_score = int(round(raw_score / user_num))
             dept_summary_rows.append({
                 "Tiêu đề": dep,
                 "#": idx,
                 "Tháng": report_month_str,
                 "Active Days (số ngày có sử dụng)": active_days,
                 "Số lượng hội thoại": conv_count,
-                "Số lượng tin nhắn trung bình trong mỗi hội thoại": avg_msgs,
-                "Độ dài trung bình câu prompt (từ)": avg_prompt_len,
+                # Use average messages per conversation for this metric
+                "Số lượng tin nhắn trung bình trong mỗi hội thoại": avr_messages,
+                # Use average word count per prompt
+                "Độ dài trung bình câu prompt (từ)": avr_wordprompts,
                 "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %": purpose_str,
                 "Chủ đề (Tuyển dụng, Thuế, ...) kèm %": topic_str,
-                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)": rating_name,
-                "Điểm KPIs %": kpi_score,
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Rất tốt, Tốt+, Tốt, Khá, Trung bình, Thấp, Không sử dụng)": rating_name,
+                "Điểm KPIs %": final_score,
             })
         dept_summary_df = pd.DataFrame(dept_summary_rows)
 
@@ -650,10 +708,19 @@ if uploaded_files:
             """
             **Hướng dẫn chấm điểm KPIs**
             
-            - **Xuất sắc (100%)**: sử dụng thường xuyên ChatGPT trong công việc hằng ngày, có nhiều nội dung tương tác đa dạng và trọng tâm, đóng góp trực tiếp vào công việc cụ thể cả trong chuyên môn lẫn quản trị vận hành, mang lại hiệu quả thấy rõ cho tổ chức.
-            - **Tốt (80%)**: sử dụng thường xuyên ChatGPT trong công việc hằng ngày, có từ 5 nội dung đóng góp vào công việc cụ thể, mang lại hiệu quả thấy rõ.
-            - **Khá (50%)**: có tương tác sử dụng ChatGPT nhưng chưa thường xuyên hoặc tương tác thường xuyên nhưng nội dung chưa trọng tâm, dẫn đến ứng dụng chưa cao trong công việc.
-            - **Thấp (0%)**: ít tương tác trên ứng dụng ChatGPT, nội dung hỏi qua loa, chưa ứng dụng hoặc ứng dụng được rất ít trong công việc.
+            Hệ thống đánh giá tuân thủ ChatGPT dựa trên tổng số prompt, số ngày sử dụng, độ đa dạng chủ đề,
+            số tin nhắn trung bình mỗi cuộc hội thoại và độ dài trung bình của prompt.  Điểm chia nhỏ thành các mốc sau:
+            
+            - **Xuất sắc (100%)**: sử dụng rất thường xuyên, nhiều chủ đề (≥20) và nội dung dài (≥10 tin nhắn mỗi cuộc, ≥40 từ mỗi prompt).
+            - **Rất tốt (95%)**: sử dụng thường xuyên, đa dạng (≥18 chủ đề), nội dung khá dài (≥8 tin nhắn, ≥35 từ).
+            - **Tốt+ (90%)**: sử dụng đều đặn, khá đa dạng (≥15 chủ đề), nội dung vừa đủ (≥6 tin nhắn, ≥30 từ).
+            - **Tốt (85%)**: đáp ứng yêu cầu tốt với ≥170 prompt, ≥14 ngày sử dụng và ≥10 chủ đề, nội dung có chiều sâu (≥5 tin nhắn, ≥25 từ).
+            - **Khá (80%)**: có mức sử dụng đáng kể (≥150 prompt, ≥6 ngày), nội dung trung bình (≥4 tin nhắn, ≥20 từ).
+            - **Trung bình (50%)**: có sử dụng nhưng chưa đều (≥100 prompt hoặc ≥5 ngày) với nội dung tương đối (≥3 tin nhắn, ≥15 từ).
+            - **Thấp (25%)**: có sử dụng nhưng rất ít hoặc nội dung ngắn.
+            - **Không sử dụng (0%)**: không phát sinh prompt trong kỳ báo cáo.
+            
+            Điểm KPI cuối cùng được chia theo số lượng nhân sự trong phòng ban để đảm bảo công bằng giữa các phòng quy mô khác nhau.
             """,
             unsafe_allow_html=True,
         )
@@ -661,11 +728,11 @@ if uploaded_files:
         if not dept_summary_df.empty:
             kpi_table = dept_summary_df[[
                 "Tiêu đề",
-                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)",
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Rất tốt, Tốt+, Tốt, Khá, Trung bình, Thấp, Không sử dụng)",
                 "Điểm KPIs %",
             ]].rename(columns={
                 "Tiêu đề": "Phòng ban",
-                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)": "Đánh giá",
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Rất tốt, Tốt+, Tốt, Khá, Trung bình, Thấp, Không sử dụng)": "Đánh giá",
                 "Điểm KPIs %": "KPIs (%)",
             })
             st.dataframe(kpi_table)
@@ -714,7 +781,7 @@ if uploaded_files:
                 "Độ dài trung bình câu prompt (từ)",
                 "Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %",
                 "Chủ đề (Tuyển dụng, Thuế, ...) kèm %",
-                "Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)",
+                "Đánh giá chất lượng theo A3 (Xuất sắc, Rất tốt, Tốt+, Tốt, Khá, Trung bình, Thấp, Không sử dụng)",
                 "Điểm KPIs %",
             ]
             for col_idx, col_name in enumerate(headers):
@@ -734,7 +801,7 @@ if uploaded_files:
                 worksheet.write(row_idx + 1, 6, row_data["Độ dài trung bình câu prompt (từ)"], num_fmt)
                 worksheet.write(row_idx + 1, 7, row_data["Mục đích sử dụng (Tra cứu, tóm tắt, Viết mail, học tập,...) kèm %"], text_fmt)
                 worksheet.write(row_idx + 1, 8, row_data["Chủ đề (Tuyển dụng, Thuế, ...) kèm %"], text_fmt)
-                worksheet.write(row_idx + 1, 9, row_data["Đánh giá chất lượng theo A3 (Xuất sắc, Tốt, Khá, Thấp)"], text_fmt)
+                worksheet.write(row_idx + 1, 9, row_data["Đánh giá chất lượng theo A3 (Xuất sắc, Rất tốt, Tốt+, Tốt, Khá, Trung bình, Thấp, Không sử dụng)"], text_fmt)
                 worksheet.write(row_idx + 1, 10, row_data["Điểm KPIs %"], int_fmt)
             workbook.close()
             buffer.seek(0)
